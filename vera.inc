@@ -1,0 +1,1 @@
+/home/freefull/software/x16emu/demos/assembly/vera.inc

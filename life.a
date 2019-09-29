@@ -1,0 +1,231 @@
+; Conway's Game of Life demo
+; Available under the MIT Licence
+
+; Copyright 2019 Filip Szczepański
+; 
+; Permission is hereby granted, free of charge, to any person obtaining a copy
+; of this software and associated documentation files (the "Software"), to deal
+; in the Software without restriction, including without limitation the rights
+; to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+; copies of the Software, and to permit persons to whom the Software is
+; furnished to do so, subject to the following conditions:
+; 
+; The above copyright notice and this permission notice shall be included in all
+; copies or substantial portions of the Software.
+; 
+; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+; IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+; FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+; AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+; LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+; SOFTWARE.
+
+!src "vera.inc"
+
+;HSCALE = XRES * 128 / 640
+HSCALE = 8
+;VSCALE = YRES * 128 / 480
+VSCALE = 8
+HSTART = 0
+HSTOP = 640
+VSTART = 0
+VSTOP = 480
+MAP_BASE = $00000
+TILE_BASE = MAP_BASE + 32*32*2
+
+!addr xpos = $00
+!addr ypos = $01
+!addr temp1 = $FB
+!addr temp2 = $FC
+
+*=$0801
+
+; SYS2601
+!byte $0b,$08,$01,$00,$9e,$32,$30,$36,$31,$00,$00,$00
+
+    ; Display composer
+    +video_init
+    lda #HSCALE
+    sta veradat
+    lda #VSCALE
+    sta veradat
+    ; BORDER_COLOR
+    lda #0
+    sta veradat
+    lda #<HSTART
+    sta veradat
+    lda #<HSTOP
+    sta veradat
+    lda #<VSTART
+    sta veradat
+    lda #<VSTOP
+    sta veradat
+    ; STARTSTOP_H
+    lda #(>VSTOP) << 5 | (>VSTART) << 4 | (>HSTOP) << 2 | >HSTART
+    sta veradat
+
+    ; Layer 0
+    +vset vreg_lay1 | AUTO_INC_1
+    ; Mode 4
+    lda #(4 << 5) | 1
+    sta veradat
+    ; CTRL1
+    lda #$30  ; 16x16 tiles, 32x32 map size
+    sta veradat
+    ; MAP_BASE
+    stz veradat
+    stz veradat
+    ; TILE_BASE (bitmap location)
+    lda #<(TILE_BASE >> 2)
+    sta veradat
+    LDA #>(TILE_BASE >> 2)
+    sta veradat
+
+    ; Set the whole map area to tile 0
+    +vset MAP_BASE | AUTO_INC_1
+    ldx #32
+--  ldy #32
+-   stz veradat
+    stz veradat
+    dey
+    bne -
+    dex
+    bne --
+
+    ; Initialise the life_area with some "random data"
+    ldx #0
+-   lda $0804, X
+    and #1
+    sta life_area, X
+    inx
+    bne -
+
+loop:
+    ; Update simulation
+    ldx #16
+--  ldy #16
+    stx xpos
+-   sty ypos
+    jsr get_neighbours
+    sta temp2
+    jsr get_cell
+    lda temp2
+    sta neighbours, X
+    ldx xpos
+    dey
+    bne -
+    dex
+    bne --
+
+    ; Update life_area
+-   lda life_area, X
+    beq dead
+alive:
+    lda neighbours, X
+    cmp #2
+    beq set_alive
+    cmp #3
+    beq set_alive
+    bne set_dead
+dead:
+    lda neighbours, X
+    cmp #3
+    beq set_alive
+set_dead:
+    lda #0
+    sta life_area, X
+    bra +
+set_alive:
+    lda #1
+    sta life_area, X
++   inx
+    bne -
+
+    ; Draw graphics
+    +vset TILE_BASE | AUTO_INC_1
+    ldx #0
+-   lda life_area, X
+    sta veradat
+    inx
+    bne -
+
+    ; Delay
+    ldx #0
+--  ldy #128
+-   nop
+    nop
+    nop
+    iny
+    bne -
+    inx
+    bne --
+jmp loop ; Infinite loop
+
+; Parameters: xpos, ypos
+; Outputs: A
+; Munges: X, temp1
+get_neighbours:
+    stz temp1
+    dec xpos
+    jsr get_cell
+    clc
+    adc temp1
+    sta temp1
+    dec ypos
+    jsr get_cell
+    clc
+    adc temp1
+    sta temp1
+    inc xpos
+    jsr get_cell
+    clc
+    adc temp1
+    sta temp1
+    inc xpos
+    jsr get_cell
+    clc
+    adc temp1
+    sta temp1
+    inc ypos
+    jsr get_cell
+    clc
+    adc temp1
+    sta temp1
+    inc ypos
+    jsr get_cell
+    clc
+    adc temp1
+    sta temp1
+    dec xpos
+    jsr get_cell
+    clc
+    adc temp1
+    sta temp1
+    dec xpos
+    jsr get_cell
+    clc
+    adc temp1
+    inc xpos
+    dec ypos
+    rts
+
+; Parameters: xpos, ypos
+; Outputs: A, X
+get_cell:
+    lda xpos
+    and #$0F
+    sta xpos
+    lda ypos
+    asl
+    asl
+    asl
+    asl
+    ora xpos
+    tax
+    lda life_area, X
+    rts
+
+!align 255, 0
+life_area: !fill 256
+neighbours: !fill 256
